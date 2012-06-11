@@ -1,0 +1,13 @@
+1.binder原理
+ 简介
+ register_looper vs enter_looper
+ c++库类之间关系，以及用法
+ 原理，数据结构相关（驱动）
+ C++中instance做了以后，什么地方做循环？是system_server？
+ client获得某个service的过程
+2.使用
+ C，C++，JAVA
+ service命令
+
+附：
+ 红黑树-王聪

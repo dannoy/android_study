@@ -1,0 +1,40 @@
+digraph g {
+    graph [
+    rankdir = "LR"
+    ];
+    node [
+    fontsize = "16"
+    //shape = "ellipse"
+    shape = "record"
+    ];
+    edge [
+    ];
+
+    "binder_proc" [
+    label = "<f0> struct binder_proc | <f1> struct hlist_node proc_node |  <f2> struct rb_root threads | <f3> struct rb_root nodes | <f4> struct rb_root refs_by_desc | <f5> struct rb_root refs_by_node | <f6> int pid | <f7> struct vm_area_struct *vma | <f8> struct task_struct *tsk | <f9> struct files_struct *files | <f10> struct hlist_node deferred_work_node"
+    ];
+
+    "binder_node" [
+    label = "<f0> struct binder_node | <f1> int debug_id |  <f2> struct binder_work work | <f3> union \{ \nstruct rb_node rb_node;\n struct hlist_node dead_node; \n\} | <f4> struct binder_proc *proc | <f5> struct hlist_head refs | <f6>"
+    ];
+
+    "binder_ref" [
+    label = "<f0> struct binder_ref | <f1> int debug_id |  <f2> struct rb_node rb_node_desc | <f3> struct rb_node rb_node_node | <f4> struct hlist_node node_entry | <f5> struct binder_proc *proc | <f6> struct binder_node *node | <f7>"
+    ];
+
+    "binder_thread" [
+    label = "<f0> struct binder_thread | <f1> struct binder_proc *proc |  <f2> struct rb_node rb_node | <f3> int pid | <f4> int looper | <f5> struct binder_transaction *transaction_stack | <f6> struct list_head todo | <f7> wait_queue_head_t wait | <f8> struct binder_stats stats"
+    ];
+
+    binder_proc:f2 -> binder_thread:f2 
+    binder_proc:f3 -> binder_node:f3 [label = "rb_node"]
+    binder_proc:f4 -> binder_ref:f2 
+    binder_proc:f5 -> binder_ref:f3 
+
+    binder_node:f5 -> binder_ref:f4 
+    binder_node:f5 -> binder_proc:f0 
+
+    binder_ref:f6 -> binder_node:f0 
+
+    binder_thread:f6 -> binder_proc:f0 
+}

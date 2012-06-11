@@ -1,0 +1,43 @@
+digraph G{
+    rankdir=LR
+    //ranksep=equally
+    main_mk -> {help_mk; config_mk; cleanbuild_mk; out_version_checked_mk; definitions_mk}    
+
+    help_mk [label = "help.mk"]
+    config_mk [label = "config.mk"]
+    cleanbuild_mk [label = "cleanbuild.mk"]
+    out_version_checked_mk [label = "-include $(OUT_DIR)/versions_checked.mk"]
+    definitions_mk [label = "definitions.mk"]
+
+    config_mk -> {buildspec_mk; envsetup_mk; dumpvar_mk}
+    buildspec_mk [label = "-$(TOPDIR)buildspec.mk"]
+    envsetup_mk [label = "envsetup.mk"]
+    dumpvar_mk [label = "dumpvar.mk"]
+
+    envsetup_mk -> {version_defaults_mk; product_config_mk; BoardConfig_mk;  combo__select_mk; combo__javac_mk}
+    version_defaults_mk [label = "version_defaults.mk"]
+    product_config_mk [label = "product_config.mk"]
+    BoardConfig_mk [label = "[;device;vendor]{TARGET_DEVICE}BoardConfig.mk"]
+    combo__select_mk [label = "combo/select.mk"]
+    combo__javac_mk [label = "combo/javac.mk"]
+
+    combo__select_mk -> {combo_target_combo_os_arch_mk}
+    combo_target_combo_os_arch_mk [label = "$(combo_target)$(combo_os_arch).mk"]
+
+    product_config_mk -> {node_fns_mk; product_mk; device_mk; AndroidProducts_mk}
+    node_fns_mk [label = "node_fns.mk"]
+    product_mk [label = "product.mk"]
+    device_mk [label = "device.mk"]
+    AndroidProducts_mk [label = "{;device;vendor}AndroidProducts.mk"]
+
+    cleanbuild_mk -> {cleanspec_mk; product_out_clean_steps_mk; product_out_previous_build_config_mk}
+    cleanspec_mk [label = "cleanspec.mk"]
+    product_out_clean_steps_mk [label = "-$(PRODUCT_OUT)/clean_steps.mk"]
+    product_out_previous_build_config_mk [label = "-$(PRODUCT_OUT)/previous_build_config.mk"]
+
+    cleanspec_mk -> {CleanSpec_mk}
+    CleanSpec_mk [label = "findleaves.py CleanSpec.mk"]
+
+
+    _mk [label = ".mk"]
+}

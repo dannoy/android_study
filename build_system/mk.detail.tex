@@ -1,0 +1,137 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{CJK} %使用CJK套件
+%\usepackage[encapsulated]{CJK} %1.Dec. 2009更新：使用[encapsulate]才是正確的用法
+%\usepackage{CJK} %1.Dec. 2009更新：使用[encapsulate]才是正確的用法
+\usepackage{indentfirst} %段首缩进
+
+\author{Dannoy.Lee \\
+    dannoy.lee@gmail.com}
+% define the title
+\title{Detail of Android Build System}
+\begin{document}
+%\begin{CJK}{UTF8}{bsmi} %開始CJK環境，設定編碼，設定字體
+\begin{CJK*}{UTF8}{gbsn}
+% generates the title
+\maketitle
+%\begin{center}
+%dannoy.lee@gmail.com
+%\end{center}
+
+% insert the table of contents
+\tableofcontents
+\newpage
+
+\section{Brief Introduction}
+本文试图对Android的build system进行较详细的分析。但由于对Andrid平台环境不够熟悉，理解上可能会出现偏差。
+\subsection{准备知识}
+略。
+\subsection{重要的配置文件}
+\begin{enumerate}
+    \item AndroidProducts.mk \\
+    \item BoardConfig.mk \\
+    \item CleanSpec.mk \\
+\end{enumerate} 
+\subsection{Two kinds of Target}
+\begin{description}
+    \item 正常的目标 \\
+    \item 改变行为的目标(modifier targets) \\
+\end{description} 
+\ldots{}
+
+\section{流程}
+    \subsection{main.mk}
+    \begin{itemize}
+        \item include \$(BUILD\_SYSTEM)/help.mk \\
+        \item include \$(BUILD\_SYSTEM)/config.mk \\
+        \item include \$(BUILD\_SYSTEM)/cleanbuild.mk \\
+        \begin{enumerate}
+            \item include \$(BUILD\_SYSTEM)/cleanspec.mk：包含所有的CleanSpec.mk文件。
+            \item 检查\$(PRODUCT\_OUT)/clean\_steps.mk里是否有非来自于CleanSpec.mk里的clean step，并重写该文件。
+            \item 检查\$(PRODUCT\_OUT)/previous\_build\_config.mk里前一次的配置是否与这一次的配置是否一样，若不一样且DISABLE\_AUTO\_INSTALLCLEAN不等于true则进行必要的清理。
+        \end{enumerate} 
+        \item -include \$(OUT\_DIR)/versions\_checked.mk \\
+            检查文件系统是否对大小写敏感，当前目录的绝对路径是否包含空格，java以及javac的版本是否正确（当前为1.6）。
+        \item include \$(BUILD\_SYSTEM)/definitions.mk \\
+        \begin{enumerate}
+            \item 定义一堆ALL\_变量
+            \item 定义一堆all-xx-files-under,all-subdir-xx-files,get-xxx,transform-xxx[-to-yyy],
+            \item 
+        \end{enumerate} 
+    \end{itemize} 
+
+
+    \subsection{config.mk}
+    \begin{itemize}
+        \item \-include \$(TOPDIR)buildspec.mk \\
+        \item include \$(BUILD\_SYSTEM)/envsetup.mk
+    \end{itemize} 
+
+    \begin{enumerate} 
+        \item 根据从envsetup.mk中得到的TARGET\_DEVICE来包含对应的BoardConfig.mk \newline
+            131 board\_config\_mk := \textbackslash \\
+            132     \$(strip \$(wildcard \textbackslash \\
+            133         \$(SRC\_TARGET\_DIR)/board/\$(TARGET\_DEVICE)/BoardConfig.mk \textbackslash \\
+            134         device/*/\$(TARGET\_DEVICE)/BoardConfig.mk \textbackslash \\
+            135         vendor/*/\$(TARGET\_DEVICE)/BoardConfig.mk \textbackslash \\
+            136     )) \\
+        \item 通过include combo/select.mk设置HOST以及TARGET的编译器以及编译选项 \newline
+        \begin{enumerate} 
+            \item combo/select.mk设置通用的编译器，库选项，编译器选项以及ccache的封装\newline
+            \item include \$(BUILD\_COMBOS)/\$(combo\_target)\$(combo\_os\_arch).mk 设置特定平台的编译器，编译器选项 \newline
+        \end{enumerate} 
+        \item 通过include \$(BUILD\_SYSTEM)/combo/javac.mk设置COMMON\_JAVAC, HOST\_JAVAC, TARGET\_JAVAC \\
+        \item 定义LEX，YACC，DOXYGEN，AAPT，AIDL，PROTOC，ICUDATA，SIGNAPK\_JAR，MKBOOTFS等命令 \\
+        \item 确立最终的CFLAGS，LDFALGS，CPPFLAGS等 \\
+        \item include \$(BUILD\_SYSTEM)/dumpvar.mk \\
+        \begin{enumerate} 
+            \item 支持如下形式的用法，在build/envsetup.sh或者调试时用来获取makefile内部变量的值 \\ 
+              CALLED\_FROM\_SETUP=true \textbackslash \\
+                make -f config/envsetup.make dumpvar-TARGET\_OUT \\
+              CALLED\_FROM\_SETUP=true \textbackslash \\
+                make -f config/envsetup.make dumpvar-abs-HOST\_OUT\_EXECUTABLES \\
+            \item 当dump的var不为report\_config时，打印出当前的makefile配置信息，即在每次编译时打印出的以下信息 \\
+            ============================================ \\
+            PLATFORM\_VERSION\_CODENAME=AOSP \\
+            PLATFORM\_VERSION=4.0.4.0.4.0.4 \\
+            TARGET\_PRODUCT=full \\
+            TARGET\_BUILD\_VARIANT=eng \\
+            TARGET\_BUILD\_TYPE=release \\
+            TARGET\_BUILD\_APPS= \\
+            TARGET\_ARCH=arm \\
+            TARGET\_ARCH\_VARIANT=armv7-a \\
+            HOST\_ARCH=x86 \\
+            HOST\_OS=linux \\
+            HOST\_OS\_EXTRA=Linux-3.0.0-8-generic-x86\_64-with-Ubuntu-10.04-lucid \\
+            HOST\_BUILD\_TYPE=release \\
+            BUILD\_ID=OPENMASTER \\
+            OUT\_DIR=out \\
+            =========================================== \\
+        \end{enumerate} 
+    \end{enumerate} 
+
+
+
+    \subsection{envsetup.mk}
+      根据系统设置一些HOST\_，BUILD\_之类的变量，再通过包含product\_config.mk确定所编译的product并设置HOST\_，TARGET\_等的用来指示输出目录变量。
+    \subsection{product\_config.mk}
+      这个里面要注意的就是一个product可以inherit另一个product的makefile的方式进行继承变量。
+
+\section{Internals}
+    \subsection{product}
+    \subsection{clean step}
+    \emph{主要文件：}
+    \begin{description}
+        \item cleanbuild.mk
+        \item CleanSpec.mk
+    \end{description}
+    \subsection{building}
+    \emph{主要文件：}
+        Android.mk?
+
+
+
+
+%\end{CJK} %有始有終
+\end{CJK*} %有始有終
+\end{document}
+
