@@ -7,3 +7,5 @@ Android related study
  build_system/
 # Binder Analysis
  binder/
+# UsbObserver
+ 
