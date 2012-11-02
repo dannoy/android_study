@@ -1,0 +1,53 @@
+diff -uNr services.clean/java/com/android/server/PowerManagerService.java services/java/com/android/server/PowerManagerService.java
+--- services.clean/java/com/android/server/PowerManagerService.java	2012-07-09 16:28:12.000000000 +0800
++++ services/java/com/android/server/PowerManagerService.java	2012-10-31 16:49:03.614438505 +0800
+@@ -1315,8 +1315,9 @@
+         public void run()
+         {
+ // Deleted by Qiuhongguo for STANDBY
+-Slog.d(TAG, "Screen must keep ON all the time! TimeoutTask return.");
+-/*
++//Slog.d(TAG, "Screen must keep ON all the time! TimeoutTask return.");
++Slog.d(TAG, "TimeoutTask continues for ScreenSaver.");
++
+             synchronized (mLocks) {
+                 if (mSpew) {
+                     Slog.d(TAG, "user activity timeout timed out nextState=" + this.nextState);
+@@ -1343,7 +1344,7 @@
+                         break;
+                 }
+             }
+-*/
++
+         }
+     }
+ 
+@@ -1478,6 +1479,7 @@
+                         Slog.d(TAG, "mBroadcastWakeLock=" + mBroadcastWakeLock);
+                     }
+                     if (mContext != null && ActivityManagerNative.isSystemReady()) {
++                        Slog.d(TAG, "Send SCREENONINTENT");
+                         mContext.sendOrderedBroadcast(mScreenOnIntent, null,
+                                 mScreenOnBroadcastDone, mHandler, 0, null, null);
+                     } else {
+@@ -1499,6 +1501,7 @@
+                     }
+ 
+                     if (mContext != null && ActivityManagerNative.isSystemReady()) {
++                        Slog.d(TAG, "Send SCREENOFFINTENT");
+                         mContext.sendOrderedBroadcast(mScreenOffIntent, null,
+                                 mScreenOffBroadcastDone, mHandler, 0, null, null);
+                     } else {
+@@ -1720,7 +1723,11 @@
+                 mScreenBrightness.forceValueLocked(Power.BRIGHTNESS_OFF);
+             }
+         }
+-        int err = Power.setScreenState(on);
++        int err = 0;
++        /*
++         * Commented by lijin
++         * For ScreenSaver
++        int err = Power.setScreenState(on);*/
+         if (err == 0) {
+             mLastScreenOnTime = (on ? SystemClock.elapsedRealtime() : 0);
+             if (mUseSoftwareAutoBrightness) {

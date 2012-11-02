@@ -8,4 +8,4 @@ Android related study
 # Binder Analysis
  binder/
 # UsbObserver
- 
+# ScreenSaverManager

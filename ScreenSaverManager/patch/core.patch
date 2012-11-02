@@ -1,0 +1,19 @@
+二进制文件core.clean/java/android/os/.Process.java.swp和core/java/android/os/.Process.java.swp有差异
+diff -uNr core.clean/java/android/service/wallpaper/WallpaperService.java core/java/android/service/wallpaper/WallpaperService.java
+--- core.clean/java/android/service/wallpaper/WallpaperService.java	2012-07-09 16:28:08.000000000 +0800
++++ core/java/android/service/wallpaper/WallpaperService.java	2012-10-31 16:34:00.510466780 +0800
+@@ -780,6 +780,14 @@
+         
+         void reportVisibility() {
+             if (!mDestroyed) {
++
++                //Added by lj
++                //For screensaver
++                if (mIWallpaperEngine.mIsPreview 
++                        && !mScreenOn) {
++                    mScreenOn = true;
++                }
++                //End
+                 boolean visible = mVisible && mScreenOn;
+                 if (mReportedVisible != visible) {
+                     mReportedVisible = visible;

@@ -1,0 +1,7 @@
+This is a simple ScreenSaver for Android.
+
+1.To use this app,one must apply the patches to Android framework(framework/base/{core,services}).
+  These two patches maybe only works for my Android version exactly, but you can get some thoughts
+  from them.
+2.The APP part of of this DIR uses a specific live wallpaper as screensaver, and most of this code
+  is insipired by packages/wallpapers/LivePicker.
