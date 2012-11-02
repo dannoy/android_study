@@ -1,0 +1,616 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{CJK} %使用CJK套件
+\usepackage{indentfirst} %段首缩进
+\usepackage{graphicx}
+\usepackage{booktabs}
+%\usepackage[T1]{fontenc}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{float}
+
+\author{Li.Jin \\
+    dannoy.lee@gmail.com
+    }
+% define the title
+\begin{document}
+\begin{CJK*}{UTF8}{gbsn}
+\title{Android SystemUI 之 Phone or Tablet}
+\hbadness=10000
+
+\tolerance=10000
+
+\hfuzz=150pt
+%\begin{CJK}{UTF8}{bsmi} %開始CJK環境，設定編碼，設定字體
+%\pagestyle{headings}
+%设置listings的全局属性（包含代码）
+%\lstset{numbers=left, numberstyle=\tiny, keywordstyle=\color{blue!70}, commentstyle=\color{red!50!green!50!blue!50}, frame=shadowbox, rulesepcolor=\color{red!20!green!20!blue!20}}
+\lstset{breaklines,numbers=left, showstringspaces=false, extendedchars=false, basicstyle=\ttfamily\small,numberstyle=\tiny, keywordstyle=\color{blue!70}, commentstyle=\color{red!50!green!50!blue!50}, frame=line, rulesepcolor=\color{red!20!green!20!blue!20}}
+%\lstset{numbers=left, breaklines=true, numberstyle=\tiny, keywordstyle=\color{blue!70}, commentstyle=\color{red!50!green!50!blue!50}, frame=shadowbox, rulesepcolor=\color{red!20!green!20!blue!20}}
+% generates the title
+\maketitle
+
+% insert the table of contents
+%\tableofcontents
+%\newpage
+
+\setcounter{page}{1}
+\section{引言}
+本文分析了SystemUI启动过程中是如何确定显示PhoneStatusBar还是TabletStatusBar，以及
+给出了指定PhoneStatusBar或者TabletStatusBar的方法。
+
+
+\section{流程分析}
+    \begin{enumerate}
+        \item 在SystemServer(services/java/com/android/server/SystemServer.java)启动过程中有如下代码：
+\begin{lstlisting}[language=JAVA]
+ActivityManagerService.self().systemReady(new Runnable() {
+        public void run() {
+        Slog.i(TAG, "Making services ready");
+
+        startSystemUi(contextF);                                                                                                                                                      
+        try {
+        if (batteryF != null) batteryF.systemReady();
+        } catch (Throwable e) {
+        reportWtf("making Battery Service ready", e); 
+        }
+         ...
+}
+\end{lstlisting}
+        其中startSystemUi()启动了com.android.systemui.SystemUIService这个服务。
+        \item SystemUIService的onCreate方法：
+\begin{lstlisting}[language=JAVA]
+public void onCreate() {
+// Pick status bar or system bar.                                                                                                                                                     
+if (SHOW_STATUS_BAR == getHideStartBarSetParam(this))
+{   
+    if (null == mServices)
+    {   
+        IWindowManager wm = IWindowManager.Stub.asInterface(
+                ServiceManager.getService(Context.WINDOW_SERVICE));
+        try {
+            SERVICES[0] = wm.canStatusBarHide()
+                ? R.string.config_statusBarComponent
+                : R.string.config_systemBarComponent;
+        } catch (RemoteException e) {
+            Slog.w(TAG, "Failing checking whether status bar can hide", e); 
+        }   
+             ...
+    }
+}
+\end{lstlisting}
+       line 10根据wm.canStatusBarHide()决定接下来要启动的是哪一类型的statusbar，其中使用的
+       资源文件内容如下(res/values/config.xml):
+\begin{lstlisting}[language=XML]
+<!-- Component to be used as the status bar service.  Must implement the IStatusBar
+interface.  This name is in the ComponentName flattened format (package/class)  -->
+<string name="config_statusBarComponent" translatable="false">com.android.systemui.statusbar.phone.PhoneStatusBar</string>                                                                
+
+<!-- Component to be used as the system bar service.  Must implement the IStatusBar
+interface.  This name is in the ComponentName flattened format (package/class)  -->
+<string name="config_systemBarComponent" translatable="false">com.android.systemui.statusbar.tablet.TabletStatusBar</string>
+
+\end{lstlisting}
+        此外还需要说一下的是前一段onCreate里的第三行。
+        这个是在原版android的基础之上添加的，其目的是为了支持"Settings -- Display ---Hide StatusBar"的设置的，
+        通过该设置可以动态选择是否选择加载StatusBar。
+        \item 继续分析canStatusBarHide()的调用过程，其最终会调用\\
+        policy/src/com/android/internal/policy/impl/PhoneWindowManager.java
+        里的该函数返回PhoneWindowManager.mStatusBarCanHide，其值由setInitialDisplaySize()里的如下代码初始化：
+\begin{lstlisting}[language=JAVA]
+if (width > height) {
+    shortSize = height;
+    ...
+} else {
+    shortSize = width;
+    ...
+}    
+
+// Determine whether the status bar can hide based on the size
+// of the screen.  We assume sizes > 600dp are tablets where we
+// will use the system bar.
+int shortSizeDp = shortSize
+* DisplayMetrics.DENSITY_DEFAULT
+/ DisplayMetrics.DENSITY_DEVICE;
+mStatusBarCanHide = shortSizeDp < 600; 
+\end{lstlisting}
+    其中的width和height都是setInitialDisplaySize()传进来的参数。
+    可以看出当屏幕的高和宽当中较小的那个换算为DPI后若小于600则mStatusBarCanHide值为true，
+    此时为将加载PhoneStatusBar;反之，则加载TabletStatusBar。\\
+    同时又有如下代码段：
+\begin{lstlisting}[language=JAVA]
+public class DisplayMetrics {
+    public static final int DENSITY_LOW = 120;
+    public static final int DENSITY_MEDIUM = 160;
+    public static final int DENSITY_TV = 213;
+    public static final int DENSITY_HIGH = 240;
+    public static final int DENSITY_XHIGH = 320;
+    public static final int DENSITY_DEFAULT = DENSITY_MEDIUM;
+    public static final int DENSITY_DEVICE = getDeviceDensity();
+    private static int getDeviceDensity() {                                                                                                                                                   
+        // qemu.sf.lcd_density can be used to override ro.sf.lcd_density
+        // when running in the emulator, allowing for dynamic configurations.
+        // The reason for this is that ro.sf.lcd_density is write-once and is
+        // set by the init process when it parses build.prop before anything else.
+        return SystemProperties.getInt("qemu.sf.lcd_density",
+                SystemProperties.getInt("ro.sf.lcd_density", DENSITY_DEFAULT));
+    }
+
+}
+\end{lstlisting}
+    当我们不在虚拟机上，且未设置ro.sf.lcd\_density属性，则DENSITY\_DEFAULT和\\
+    DENSITY\_DEVICE
+    相等，其值直接为宽和高分辨率的最小值。
+
+    \item setInitialDisplaySize()由WindowManagerService.displayReady()调用，而后者
+    又由SystemServer的启动代码直接调用（wm.displayReady()）。
+\begin{lstlisting}[language=JAVA]
+public void displayReady() {
+    synchronized(mWindowMap) {
+        if (mDisplay != null) {
+            throw new IllegalStateException("Display already initialized");
+        }
+        WindowManager wm = (WindowManager)mContext.getSystemService(Context.WINDOW_SERVICE);
+        mDisplay = wm.getDefaultDisplay();
+        synchronized(mDisplaySizeLock) {
+            mInitialDisplayWidth = mDisplay.getRawWidth();
+            mInitialDisplayHeight = mDisplay.getRawHeight();
+            int rot = mDisplay.getRotation();
+            if (rot == Surface.ROTATION_90 || rot == Surface.ROTATION_270) {
+                // If the screen is currently rotated, we need to swap the
+                // initial width and height to get the true natural values.
+                int tmp = mInitialDisplayWidth;
+                mInitialDisplayWidth = mInitialDisplayHeight;
+                mInitialDisplayHeight = tmp;
+            }
+            mBaseDisplayWidth = mCurDisplayWidth = mAppDisplayWidth = mInitialDisplayWidth;
+            mBaseDisplayHeight = mCurDisplayHeight = mAppDisplayHeight = mInitialDisplayHeight;
+        }
+        mInputManager.setDisplaySize(Display.DEFAULT_DISPLAY,
+                mDisplay.getRawWidth(), mDisplay.getRawHeight(),
+                mDisplay.getRawExternalWidth(), mDisplay.getRawExternalHeight());
+        mPolicy.setInitialDisplaySize(mInitialDisplayWidth, mInitialDisplayHeight);                                                                                                       
+    }
+\end{lstlisting}
+        其中的mDisplay.getRawWidth()与mDisplay.getRawHeight()实现如下：
+\begin{lstlisting}[language=JAVA]
+public int getRawWidth() {
+    int w = getRawWidthNative();
+    if (DEBUG_DISPLAY_SIZE) Slog.v(
+            TAG, "Returning raw display width: " + w);                                                                                                                                    
+    return w;
+}   
+private native int getRawWidthNative();
+
+public int getRawHeight() {
+    int h = getRawHeightNative();
+    if (DEBUG_DISPLAY_SIZE) Slog.v(
+            TAG, "Returning raw display height: " + h); 
+    return h;
+}   
+private native int getRawHeightNative();
+
+\end{lstlisting}
+        可以看到实际上是调用了两个JNI的函数，接下来我们就开始到了C++代码。
+        \item 代码在core/jni/android\_view\_Display.cpp，代码如下：
+\begin{lstlisting}[language=C++]
+static jint android_view_Display_getRawWidthNative(
+        JNIEnv* env, jobject clazz)
+{
+    DisplayID dpy = env->GetIntField(clazz, offsets.display);
+    return SurfaceComposerClient::getDisplayWidth(dpy);                                                                                                                                       
+}
+
+static jint android_view_Display_getRawHeightNative(
+        JNIEnv* env, jobject clazz)
+{
+    DisplayID dpy = env->GetIntField(clazz, offsets.display);
+    return SurfaceComposerClient::getDisplayHeight(dpy);
+}
+\end{lstlisting}
+        其中2个函数内容如下(libs/gui/SurfaceComposerClient.cpp)：
+\begin{lstlisting}[language=C++]
+ssize_t SurfaceComposerClient::getDisplayWidth(DisplayID dpy)
+{
+    if (uint32_t(dpy)>=NUM_DISPLAY_MAX)
+        return BAD_VALUE;
+    volatile surface_flinger_cblk_t const * cblk = get_cblk();
+    volatile display_cblk_t const * dcblk = cblk->displays + dpy;
+    return dcblk->w;
+}                                                                                                                                                                                             
+
+ssize_t SurfaceComposerClient::getDisplayHeight(DisplayID dpy)
+{
+    if (uint32_t(dpy)>=NUM_DISPLAY_MAX)
+        return BAD_VALUE;
+    volatile surface_flinger_cblk_t const * cblk = get_cblk();
+    volatile display_cblk_t const * dcblk = cblk->displays + dpy;
+    return dcblk->h;
+}
+\end{lstlisting}
+       继续追踪到如下代码：
+\begin{lstlisting}[language=C++]
+surface_flinger_cblk_t const volatile * ComposerService::getControlBlock() {
+    return ComposerService::getInstance().mServerCblk;
+}
+
+static inline surface_flinger_cblk_t const volatile * get_cblk() {
+    return ComposerService::getControlBlock();
+}
+
+\end{lstlisting}
+        由于调用了ComposerService::getInstance().mServerCblk，所以追踪到ComposerService的声明：
+\begin{lstlisting}[language=C++]
+class ComposerService : public Singleton<ComposerService>
+{
+    // these are constants
+    sp<ISurfaceComposer> mComposerService;
+    sp<IMemoryHeap> mServerCblkMemory;
+    surface_flinger_cblk_t volatile* mServerCblk;
+    ComposerService();
+    friend class Singleton<ComposerService>;
+    public:
+    static sp<ISurfaceComposer> getComposerService();
+    static surface_flinger_cblk_t const volatile * getControlBlock();
+};
+
+template <typename TYPE>
+class ANDROID_API Singleton
+{
+    public:
+        static TYPE& getInstance() {
+            Mutex::Autolock _l(sLock);
+            TYPE* instance = sInstance;
+            if (instance == 0) {
+                instance = new TYPE();
+                sInstance = instance;
+            }   
+            return *instance;
+        } 
+    ...
+}
+
+ComposerService::ComposerService()
+    : Singleton<ComposerService>() {
+        const String16 name("SurfaceFlinger");
+        while (getService(name, &mComposerService) != NO_ERROR) {
+            usleep(250000);
+        }
+        mServerCblkMemory = mComposerService->getCblk();
+        mServerCblk = static_cast<surface_flinger_cblk_t volatile *>(                                                                                                                             
+                mServerCblkMemory->getBase());
+    }
+\end{lstlisting}
+        从中可以看到在调用ComposerService::getInstance()的时候若没有创建则会创建一个实例
+        予以返回，其中mComposerService为binder的client端，我们略过其中的具体机理，直接跳转
+        到binder的server端，直接到达如下代码(services/surfaceflinger/SurfaceFlinger.cpp)：
+\begin{lstlisting}[language=C++]
+sp<IMemoryHeap> SurfaceFlinger::getCblk() const
+{
+    return mServerHeap;
+}
+\end{lstlisting}
+        mServerHeap由如下代码初始化：
+\begin{lstlisting}[language=C++]
+{
+    // initialize the main display
+    GraphicPlane& plane(graphicPlane(dpy));
+    DisplayHardware* const hw = new DisplayHardware(this, dpy);
+    plane.setDisplayHardware(hw);                                                                                                                                                         
+} 
+mServerHeap = new MemoryHeapBase(4096,
+        MemoryHeapBase::READ_ONLY, "SurfaceFlinger read-only heap");
+LOGE_IF(mServerHeap==0, "can't create shared memory dealer");
+
+mServerCblk = static_cast<surface_flinger_cblk_t*>(mServerHeap->getBase());
+LOGE_IF(mServerCblk==0, "can't get to shared control block's address");
+
+new(mServerCblk) surface_flinger_cblk_t;
+
+// initialize primary screen
+// (other display should be initialized in the same manner, but
+// asynchronously, as they could come and go. None of this is supported
+// yet).
+const GraphicPlane& plane(graphicPlane(dpy));
+const DisplayHardware& hw = plane.displayHardware();
+const uint32_t w = hw.getWidth();
+const uint32_t h = hw.getHeight();
+const uint32_t f = hw.getFormat();
+hw.makeCurrent();
+
+// initialize the shared control block
+mServerCblk->connected |= 1<<dpy;
+display_cblk_t* dcblk = mServerCblk->displays + dpy;
+memset(dcblk, 0, sizeof(display_cblk_t));
+dcblk->w            = plane.getWidth();
+dcblk->h            = plane.getHeight();
+dcblk->format       = f;
+dcblk->orientation  = ISurfaceComposer::eOrientationDefault;
+dcblk->xdpi         = hw.getDpiX();
+dcblk->ydpi         = hw.getDpiY();
+dcblk->fps          = hw.getRefreshRate();                                                                                                                                                
+dcblk->density      = hw.getDensity();
+\end{lstlisting}
+        %终于找到了之前对应的\verb|dcblk->w，dcblk->h|。\\
+        终于找到了之前对应的\texttt{dcblk->w，dcblk->h}。\\
+        其中的plane在前6行进行的初始化，其中GraphicPlane::setDisplayHardware()
+        代码如下：
+\begin{lstlisting}[language=C++]
+int GraphicPlane::getWidth() const {
+    return mWidth;
+}
+int GraphicPlane::getHeight() const {
+    return mHeight;
+}
+void GraphicPlane::setDisplayHardware(DisplayHardware *hw)
+{
+    mHw = hw;
+    ...
+    const float w = hw->getWidth();
+    const float h = hw->getHeight();
+    ...
+    if (displayOrientation & ISurfaceComposer::eOrientationSwapMask) {
+        mDisplayWidth = h;
+        mDisplayHeight = w;
+    } else {
+        mDisplayWidth = w;
+        mDisplayHeight = h;
+    }
+
+    setOrientation(ISurfaceComposer::eOrientationDefault);
+}
+status_t GraphicPlane::setOrientation(int orientation)
+{
+    const DisplayHardware& hw(displayHardware());
+    const float w = mDisplayWidth;
+    const float h = mDisplayHeight;
+    mWidth = int(w);
+    mHeight = int(h);
+    ....
+    if (orientation & ISurfaceComposer::eOrientationSwapMask) {
+        mWidth = int(h);
+        mHeight = int(w);
+    }
+    ....
+}
+\end{lstlisting}
+        从这段代码我们可以看到plane.getWidth()的来历，其实都是通过
+        DisplayHardware类获得的,接下来我们分析DisplayHardware是如何
+        获得宽和高的数据：
+\begin{lstlisting}[language=C++]
+DisplayHardware::DisplayHardware(
+        const sp<SurfaceFlinger>& flinger,
+        uint32_t dpy)
+: DisplayHardwareBase(flinger, dpy),
+    mFlinger(flinger), mFlags(0), mHwc(0)
+{           
+    init(dpy);                                                                                                                                                                                
+}
+void DisplayHardware::init(uint32_t dpy)
+{
+    //start hdmi and disp service
+    DisplayClient disp;
+    disp.InitHdmiAndDisp();
+    mNativeWindow = new FramebufferNativeWindow();
+    ....
+    surface = eglCreateWindowSurface(display, config, mNativeWindow.get(), NULL);
+    eglQuerySurface(display, surface, EGL_WIDTH,  &mWidth);
+    eglQuerySurface(display, surface, EGL_HEIGHT, &mHeight);
+}
+\end{lstlisting}
+        而eglQuerySurface()的代码如下：
+\begin{lstlisting}[language=C++]
+EGLBoolean eglQuerySurface( EGLDisplay dpy, EGLSurface eglSurface,
+        EGLint attribute, EGLint *value)
+{
+    ...
+    switch (attribute) {
+        case EGL_CONFIG_ID:
+            ret = getConfigAttrib(dpy, surface->config, EGL_CONFIG_ID, value);
+            break;
+        case EGL_WIDTH:
+            *value = surface->getWidth();
+            break;
+        case EGL_HEIGHT:
+            *value = surface->getHeight();
+            break;
+    ...
+}
+struct egl_window_surface_v2_t : public egl_surface_t
+{   
+    ...
+    virtual     EGLint      getWidth() const    { return width;  }
+    virtual     EGLint      getHeight() const   { return height; }
+    ...
+}
+\end{lstlisting}
+        此处的surface实际上为egl\_window\_surface\_v2\_t,所以上面的代码说明了
+        eglQuerySurface()查询时的过程。而初始化的这两个成员变量的代码如下：
+\begin{lstlisting}[language=C++]
+egl_window_surface_v2_t::egl_window_surface_v2_t(EGLDisplay dpy,
+        EGLConfig config,
+        int32_t depthFormat,
+        ANativeWindow* window)
+: egl_surface_t(dpy, config, depthFormat), 
+    nativeWindow(window),...
+{
+    ...
+    nativeWindow->query(nativeWindow, NATIVE_WINDOW_WIDTH, &width);
+    nativeWindow->query(nativeWindow, NATIVE_WINDOW_HEIGHT, &height);
+}
+\end{lstlisting}
+        而此时的nativeWindow其实是之前获得DisplayHardware类对象时
+        的FramebufferNativeWindow,
+\begin{lstlisting}[language=C++]
+    FramebufferNativeWindow::FramebufferNativeWindow() 
+: BASE(), fbDev(0), grDev(0), mUpdateOnDemand(false)
+{
+    hw_module_t const* module;                                                                                                                                                                
+    if (hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &module) == 0) {
+        err = framebuffer_open(module, &fbDev);
+        LOGE_IF(err, "couldn't open framebuffer HAL (%s)", strerror(-err));
+
+        err = gralloc_open(module, &grDev);
+        LOGE_IF(err, "couldn't open gralloc HAL (%s)", strerror(-err));
+    }
+        ....
+        ANativeWindow::query = query;
+        ...
+}
+
+int FramebufferNativeWindow::query(const ANativeWindow* window,
+        int what, int* value) 
+{
+    const FramebufferNativeWindow* self = getSelf(window);
+    Mutex::Autolock _l(self->mutex);
+    framebuffer_device_t* fb = self->fbDev;
+    switch (what) {
+        case NATIVE_WINDOW_WIDTH:
+            *value = fb->width;
+            return NO_ERROR;
+        case NATIVE_WINDOW_HEIGHT:
+            *value = fb->height;
+            return NO_ERROR;
+            ...
+    }
+    *value = 0;
+    return BAD_VALUE;
+}
+\end{lstlisting}
+        于是，我们看到了其实query函数使用的宽和高实际是由驱动填写在
+        framebuffer\_device\_t里的。
+        \item HAL驱动里的详细代码如下：
+\begin{lstlisting}[language=C++]
+static inline int framebuffer_open(const struct hw_module_t* module,                           
+        struct framebuffer_device_t** device) {                                                
+    return module->methods->open(module,
+            GRALLOC_HARDWARE_FB0, (struct hw_device_t**)device);                               
+}
+static struct hw_module_methods_t gralloc_module_methods = {
+open: gralloc_device_open
+};
+
+struct private_module_t HAL_MODULE_INFO_SYM = {
+base: {
+common: {
+    ...
+     id: GRALLOC_HARDWARE_MODULE_ID,
+     ...
+};
+nt gralloc_device_open(const hw_module_t* module, const char* name,
+        hw_device_t** device)
+{
+    int status = -EINVAL;
+    if (!strcmp(name, GRALLOC_HARDWARE_GPU0)) {
+        ...
+    } else {
+        status = fb_device_open(module, name, device);
+    }
+    return status;
+}
+
+int fb_device_open(hw_module_t const* module, const char* name,
+        hw_device_t** device)
+{
+    if (!strcmp(name, GRALLOC_HARDWARE_FB0)) {
+        ...
+        /* initialize our state here */
+        fb_context_t *dev = (fb_context_t*)malloc(sizeof(*dev));
+
+        ...        
+        private_module_t* m = (private_module_t*)module;
+        status = mapFrameBuffer(m);
+        if (status >= 0) {
+            ....
+            const_cast<uint32_t&>(dev->device.width) = m->info.xres;
+            const_cast<uint32_t&>(dev->device.height) = m->info.yres;
+            const_cast<int&>(dev->device.stride) = stride;
+            const_cast<int&>(dev->device.format) = format;
+            const_cast<float&>(dev->device.xdpi) = m->xdpi;
+            const_cast<float&>(dev->device.ydpi) = m->ydpi;
+            const_cast<float&>(dev->device.fps) = m->fps;
+            ...
+            *device = &dev->device.common;
+        }
+    }
+}
+
+int mapFrameBufferLocked(struct private_module_t* module)
+{
+    // already initialized...
+    if (module->framebuffer) {
+        return 0;
+    }
+
+    char const * const device_template[] = {
+        "/dev/graphics/fb%u",
+        "/dev/fb%u",                                                                                                                                                                      
+        0 };
+
+    struct fb_fix_screeninfo finfo;
+    if (ioctl(fd, FBIOGET_FSCREENINFO, &finfo) == -1)
+        return -errno;
+
+    struct fb_var_screeninfo info;
+    if (ioctl(fd, FBIOGET_VSCREENINFO, &info) == -1)
+        return -errno;
+    ...
+    if (int(info.width) <= 0 || int(info.height) <= 0) {
+        // the driver doesn't return that information
+        // default to 160 dpi
+        info.width  = ((info.xres * 25.4f)/160.0f + 0.5f);
+        info.height = ((info.yres * 25.4f)/160.0f + 0.5f);
+    }
+
+    float xdpi = (info.xres * 25.4f) / info.width;
+    float ydpi = (info.yres * 25.4f) / info.height;
+    float fps  = refreshRate / 1000.0f;
+    module->flags = flags;
+    module->info = info;
+    module->finfo = finfo;
+    module->xdpi = xdpi;
+    module->ydpi = ydpi;
+    module->fps = fps;
+}
+\end{lstlisting}
+        由于我们的驱动中没有返回info.width和info.height，所以我们的DPI默认为
+        160。\\
+        至此，我们把判断显示PhoneStatusBar还是TabletStatusBar的代码全部分析完毕。
+    \end{enumerate}
+
+
+\section{总结}
+    \begin{enumerate}
+    \item 当在驱动里将分辨率的宽和高两个值的最小值设置为大于等于600的值时，
+        Android将自动使用TabletStatusBar，反之则使用PhoneStatusBar。
+
+    \item 当需要通过软件方式修改DPI时，可以设置ro.sf.lcd\_density属性
+    \item 当不需要启动SystemUI时，可以在SystemServer启动代码里将startSystemUi()注释掉
+    \end{enumerate}
+
+
+
+\section{强行使用PhoneStatusBar}
+在SystemUIService.onCreate()中将以下代码
+\begin{lstlisting}[language=JAVA]
+SERVICES[0] = wm.canStatusBarHide()
+    ? R.string.config_statusBarComponent
+    : R.string.config_systemBarComponent;
+}
+\end{lstlisting}
+强行改为：
+\begin{lstlisting}[language=JAVA]
+SERVICES[0] = R.string.config_statusBarComponent;
+}
+\end{lstlisting}
+    同时还要注意的是无论在PhoneStatusBar还是TabletStatusBar中，加载
+    资源文件时都是加载的R.layout.status\_bar,如下：
+\begin{lstlisting}[language=JAVA]
+PhoneStatusBarView sb = (PhoneStatusBarView)View.inflate(context, R.layout.status_bar, null);
+\end{lstlisting}
+\begin{lstlisting}[language=JAVA]
+final TabletStatusBarView sb = (TabletStatusBarView)View.inflate(context, R.layout.status_bar, null);
+\end{lstlisting}
+    所以在不同的显示分辨率时要注意确认res/layout文件夹以及layout-sw600dp[mdpi/hdpi/xhdpi]里的
+    statusbar.xml里的内容要与代码一致。
+\end{CJK*} %有始有終
+\end{document}
