@@ -112,6 +112,15 @@ Binder是Android系统进程间通信（IPC）方式之一。深入了解Binder�
     include/utils/StrongPointer.h \\
     include/utils/RefBase.h
 
+    \subsection{Binder 框架}
+    考察一次Binder通信的全过程会发现，Binder存在于系统以下几个部分中：
+
+    · 应用程序进程：分别位于Server进程和Client进程中
+
+    · Binder驱动：分别管理为Server端的Binder实体和Client端的引用
+
+    · 传输数据：由于Binder可以跨进程传递，需要在传输数据中予以表述
+
     \subsection{以MediaService的诞生为例来讲Binder}
     \subsubsection{三个组成部分}
     \begin{description}

@@ -1,0 +1,40 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{CJK} %使用CJK套件
+\usepackage{indentfirst} %段首缩进
+\usepackage{graphicx}
+\usepackage{booktabs}
+%\usepackage[T1]{fontenc}
+\usepackage{xcolor}
+\usepackage{listings}
+%\usepackage{hyperref}
+\usepackage[CJKbookmarks]{hyperref} % 1.for use href 2.for use zh in secion name
+
+\author{lijin \\
+    r1.1
+    }
+% define the title
+\title{Android Security Study}
+\begin{document}
+%\begin{CJK}{UTF8}{bsmi} %開始CJK環境，設定編碼，設定字體
+%\hbadness=10000
+
+%\tolerance=10000
+
+%\hfuzz=150pt
+\begin{CJK*}{UTF8}{gbsn}
+%\pagestyle{headings}
+%设置listings的全局属性（包含代码）
+\lstset{numbers=left, numberstyle=\tiny, keywordstyle=\color{blue!70}, commentstyle=\color{red!50!green!50!blue!50}, frame=shadowbox, rulesepcolor=\color{red!20!green!20!blue!20}}
+% generates the title
+\maketitle
+
+% insert the table of contents
+%\tableofcontents
+\newpage
+
+\input{inner.tex}
+%\section{驱动}
+
+\end{CJK*} %有始有終
+\end{document}
+
