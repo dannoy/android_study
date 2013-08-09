@@ -155,10 +155,26 @@ Android 4.2在此之上添加了一个消息通知，当应用程序尝试往一
 应用程序可以定义在签名级别上的安全保护，只有具有相同签名的应用才可以使用这些权限。此外还可以允许相同签名的多个应用共享UID，详见[这里](https://developer.android.com/guide/topics/manifest/manifest-element.html#uid)。
 
 
-# How to ROOT
-## Root Principle
-## Unlock Bootloader
-Root a android device
+# Lock & Root
+## SIM lock
+
+SIM lock功能一般由手机厂商所内置，网络运营商利用这项功能来限制手机所能使用的地方以及所使用的网络。通常该功能通过只允许使用特定模式的IMSI(International Mobile Subscriber Identities)号码，该号码由以下部分组成：
+
+* Mobile Country Code(MCC)
+* Mobile Network Code(MNC)
+* Mobile subscriber identification number (MSIN)
+
+该方法一般由合约机使用，以确保手机不能用其他运行商的服务（也可以在一定的时间段后解锁）。
+
+## Lock Bootloader
+
+锁Bootloader的方法不同的厂商不一样，同时有的厂商不锁而有的锁。锁住了的Bootloader的主要作用就是不允许用户随意刷第三方的ROM。所以一般都会在recovery系统里对升级包的签名作验证。
+
+## Root
+
+Root与锁Bootloader不同，root的作用是让应用程序获得root权限，以此来绕过android对系统的各种安全限制，从而第三方应用程序可以完成原本不可能提供的功能。 
+获得root权限的过程就是不断的寻找android系统的漏洞，尝试是否有方法获得root权限。
+
 
 ## Root Privilege Request
 ### SUID/SGID
