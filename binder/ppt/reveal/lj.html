@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!--<meta charset="utf-8">-->
+    <meta charset="gb2312">
+    <title>李进</title>
+    <meta name="description" content="A framework for easily creating beautiful presentations using HTML">
+    <meta name="author" content="Hakim El Hattab">
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="css/reveal.min.css">
+    <link rel="stylesheet" href="css/theme/default.css" id="theme">
+    <!-- 代码高亮插件 -->
+    <link rel="stylesheet" href="lib/css/zenburn.css">
+    </head>
+    <body>
+        <div class="reveal">
+            <div class="slides">
+                <section>
+                <h1>helloworld</h1>
+
+                <p>你好 
+                </section>
+                <section>你好 </section>
+                <section>15 </section>
+                <section>15 </section>
+                <section>
+                    <section>--第一章第一节--</section>
+                    <section>--第一章第二节--</section>
+                </section>
+                <section>
+                    <section>--第二章第一节--</section>
+                    <section>!--第二章第二节--</section>
+                </section>
+                <!-- 幻灯片正文 -->
+            </div>
+        </div>
+        <script src="lib/js/head.min.js"></script>
+        <script src="js/reveal.min.js"></script>
+        <script>
+            //在这里对幻灯片进行配置
+            Reveal.initialize({
+                // 是否显示右下角的方向盘
+                controls: true,
+                // 是否显示页面底部的进度条
+                progress: true,
+                // 是否开启快捷键
+                keyboard: true,
+                // 是否支持概览模式
+                overview: true,
+                // 是否自动居中
+                center: true,
+                // 是否循环显示幻灯片
+                loop: false,
+                // Change the presentation direction to be RTL
+                rtl: false,
+                // Number of milliseconds between automatically proceeding to the
+                // next slide, disabled when set to 0, this value can be overwritten
+                // by using a data-autoslide attribute on your slides
+                autoSlide: 0,
+                // 是否支持鼠标滚轮
+                mouseWheel: false,
+                // 是否支持链接的3D反转
+                rollingLinks: true,
+
+                // 翻页效果
+                transition: 'default', // default/cube/page/concave/zoom/linear/fade/none
+                // 翻页速度
+                transitionSpeed: 'default', // default/fast/slow
+            });
+        </script>
+    </body>
+</html>
+
+单页
+
+reveal.js支持使用键盘方向键进行横向和纵向的幻灯片切换。也就说是你可以这样安排你的幻灯片：
+第一章第一节 	第二章第一节
+第一章第二节 	第二章第二节
+
+代码如下所示：
+
