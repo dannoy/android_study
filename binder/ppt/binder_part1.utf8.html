@@ -687,34 +687,158 @@ public class LedService extends ILedManager.Stub {
                     };
                     </code></pre>
                     ---
+                    Implement Interface and BnTProcess
                     <pre><code data-trim >
-                    afd
+#include "ITProcess.h"
+
+namespace android {
+    IMPLEMENT_META_INTERFACE(TProcess, "com.routon.os.ITProcess");
+
+    status_t BnTProcess::onTransact( uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
+    {
+        int ret = -1;
+        int32_t value;
+        switch(code)
+        {
+            case TPROCESS_EXEC:{
+                /*
+                 * Here we use writeInt32(0) to simulate java function writeNoException().
+                 * This is a C++ server,but sometimes Java Client will call this service,
+                 * so we must simulate writeNoException() to suit Java Client.
+                 * Other cases are the same condition.
+                 */
+                CHECK_INTERFACE(ITProcess, data, reply);
+
+                String16 cmd = data.readString16();
+                int redirectStderrToStdout = data.readInt32();
+                TResult tRes = exec(cmd, redirectStderrToStdout);
+                /* writeNoException() */
+                reply->writeInt32(0);
+                /* write to return value */
+                reply->writeInt32(1);
+
+                tRes.writeToParcel(reply);
+                return NO_ERROR;
+               } break;
+            default:
+                return BBinder::onTransact(code, data, reply, flags);
+        }
+    }
+};
+                    
                     </code></pre>
                     ---
+                    实现TProcessService，继承自BnTProcess
                     <pre><code data-trim >
-                    adfjk
+namespace android
+{
+    class TProcessService: public BnTProcess
+    {
+        public:
+            TProcessService();
+            ~TProcessService();
+            static void instantiate();
+            virtual TResult exec(String16 cmd, int redirectStderrToStdout);
+            int tprocess_exec(String16& cmdStr,
+                                            int redirectStderrToStdout,
+                                            int *rc, char **out, char **err);
+            int tprocess_exec(const char *cmd, int redirectStderrToStdout,
+                                            int *rc, char **out, char **err);
+        private:
+            int _tprocess_daemonize(const char *cmd,
+                                            int redirectStderrToStdout,
+                                            int *rc, char **out, char **err);
+            int _collect_output_by_fd(int fd, char **out);
+            int _talk_and_collect(const char *cmd, int redirectStderrToStdout,
+                                            int *rc, char **out, char **err,
+                                            int inpipe[], int outpipe[], int errpipe[]);
+            int _fork_and_exec(const char *cmd, int redirectStderrToStdout,
+                                            int *rc, char **out, char **err,
+                                            int inpipe[], int outpipe[], int errpipe[]);
+    };
+};
+                    </code></pre>
+                    ---
+                    实现TProcessService::exec()
+                    <pre><code data-trim >
+#include "TProcessService.h"
+
+namespace android
+{
+    TProcessService::TProcessService()
+    {
+    }
+
+    TProcessService::~TProcessService()
+    {
+    }
+
+    void TProcessService::instantiate()
+    {
+        defaultServiceManager()->addService(String16("tprocess"), new TProcessService());
+    }
+    ...
+    TResult TProcessService::exec(String16 cmd, int redirectStderrToStdout) {
+        char *this_stdout = NULL;
+        char *this_stderr = NULL;
+        const char *space = "";
+        int rc = 0;
+        int ret = 0;
+
+        ret = tprocess_exec(cmd, redirectStderrToStdout,
+                                &rc, &this_stdout, &this_stderr);
+
+        if(0 == rc && 0 != ret) {
+            rc = ret;
+        }
+
+        TResult tRes(rc,
+                    this_stdout ? String16(this_stdout) : String16(),
+                    this_stderr ? String16(this_stderr) : String16());
+
+        if(this_stdout) {
+            free(this_stdout);
+        }
+        if(this_stderr) {
+            free(this_stderr);
+        }
+
+        return tRes;
+    }
+};
+                    </code></pre>
+                    ---
+                    编写主函数
+                    <pre><code data-trim >
+int main(int argc, char** argv)
+{
+    <!--sp<ProcessState> proc(ProcessState::self());-->
+
+    //signal_init();
+
+    TProcessService::instantiate();
+
+    ProcessState::self()->startThreadPool();
+
+    /*
+     * We start another one thread, so that we have 3 threads can
+     * serve the request from clients now.
+     */
+    <!--sp<Thread> t = new PoolThread(false);-->
+    t->run("TProcess #3");
+
+    IPCThreadState::self()->joinThreadPool();
+    return 0;
+}
                     </code></pre>
 
                     </script>
-                </section>
-                <section data-markdown data-separator="===" data-vertical='---'>
-                    <script type="text/template">
-                    ##ljlj
-                    </script>
-                </section>
-                <section>
-                    <pre><code data-trim contenteditable> int main()
-                    {
-                        printf();
-                    }
-                    </code></pre>
                 </section>
             </div>
         </div>
         <script src="reveal/lib/js/head.min.js"></script>
         <script src="reveal/js/reveal.min.js"></script>
         <script>
-            //???????Իõ?Ƭ????????
             Reveal.initialize({
                 controls: true,
                 progress: true,
