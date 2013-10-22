@@ -174,14 +174,17 @@
                     * local: In-process
                     * remote: Inter-Process
                     ---
-                    ### startService vs bindService
+                    startService vs bindService
+
                     * startService(): 调用者与服务之间没有关连，即使调用者退出了，服务仍然运行。
                     * bindService()：调用者与服务绑定在了一起，调用者一旦退出，服务也就终止
+
+                    <img src="image/start_or_bind_service.png" width="40%" height="40%">
                     ---
                     ### AIDL
                     Android Interface Definition Language
 
-                    定义客户端和服务端交流时所定义的功能接口
+                    定义客户端和服务端交流时所使用的功能接口
                     ===
                     ## Example1:LedService(Java)
                     ---
