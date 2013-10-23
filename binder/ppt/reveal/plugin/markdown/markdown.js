@@ -128,7 +128,9 @@
             // vertical
             if( sectionStack[k].propertyIsEnumerable(length) && typeof sectionStack[k].splice === 'function' ) {
                 markdownSections += '<section '+ attributes +'>' +
-                                        '<section data-markdown>' +  sectionStack[k].map(twrap).join('</section><section data-markdown>') + '</section>' +
+                    /*'<section data-markdown>' +  sectionStack[k].map(twrap).join('</section><section data-markdown>') + '</section>' +*/
+                    /*lijin modified*/
+                                        '<section data-markdown data-transition="linear">' +  sectionStack[k].map(twrap).join('</section><section data-markdown data-transition="linear">') + '</section>' +
                                     '</section>';
             } else {
                 markdownSections += '<section '+ attributes +' data-markdown>' + twrap( sectionStack[k] ) + '</section>';
