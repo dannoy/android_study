@@ -35,15 +35,16 @@
                 <section data-markdown data-separator="===" data-vertical='---'>
                     <script type="text/template">
                        ## Binder in Details part 2
-                       ### Implements
+                       ### Implements in CPP
 
                        lijin@routon
                        ===
-                       ## 内容
+                       ## 内容规划
 
-                       * Pointers Management
-                       * Protocol
-                       * Driver
+                       * 指针管理
+                       * 实现1: CPP实现
+                       * 实现2: 驱动(part3)
+                       * 实现3: Java实现(part4)
                     </script>
                 </section>
                 <section data-markdown data-separator="===" data-vertical='---'>
@@ -61,16 +62,478 @@
                 </section>
                 <section data-markdown data-separator="===" data-vertical='---'>
                     <script type="text/template">
-                    ##ljlj
+                        ## 实现1:CPP库的实现
+                        ### 以TProcessService的实现为主线
+                        ---
+                        ### TProcessService Main
+                        <pre><code data-trim>
+int main(int argc, char** argv)
+{
+    sp < ProcessState > proc(ProcessState::self());
+
+    TProcessService::instantiate();
+
+    ProcessState::self()->startThreadPool();
+
+    IPCThreadState::self()->joinThreadPool();
+    return 0;
+}
+                        </code></pre>
+                        ---
+                        ### Singleton
+                        <img src="image/singleton.png">
+                        ---
+                        ### Singleton (cont.)
+                        进程状态的单例
+                        <pre><code data-trim>
+sp < ProcessState > ProcessState::self()
+{
+    if (gProcess != NULL) return gProcess;
+    
+    AutoMutex _l(gProcessMutex);
+    if (gProcess == NULL) gProcess = new ProcessState;
+    return gProcess;
+}
+                        </code></pre>
+                        ---
+                        ### Singleton (cont.)
+                        线程状态的单例
+                        <pre><code data-trim>
+IPCThreadState* IPCThreadState::self()
+{
+    if (gHaveTLS) {
+restart:
+        const pthread_key_t k = gTLS;
+        IPCThreadState* st = (IPCThreadState*)pthread_getspecific(k);
+        if (st) return st;
+        return new IPCThreadState;
+    }
+    
+    if (gShutdown) return NULL;
+    
+    pthread_mutex_lock(&gTLSMutex);
+    if (!gHaveTLS) {
+        if (pthread_key_create(&gTLS, threadDestructor) != 0) {
+            pthread_mutex_unlock(&gTLSMutex);
+            return NULL;
+        }
+        gHaveTLS = true;
+    }
+    pthread_mutex_unlock(&gTLSMutex);
+    goto restart;
+}
+IPCThreadState::IPCThreadState()
+    : mProcess(ProcessState::self()),
+      mMyThreadId(androidGetTid()),
+      mStrictModePolicy(0),
+      mLastTransactionBinderFlags(0)
+{
+    pthread_setspecific(gTLS, this);
+    clearCaller();
+    mIn.setDataCapacity(256);
+    mOut.setDataCapacity(256);
+}
+                        </code></pre>
+                        ---
+                        ### 注意下ProcessState的构造函数
+                        <pre><code data-trim>
+ProcessState::ProcessState()
+    : mDriverFD(open_driver())
+    , mVMStart(MAP_FAILED)
+    , mManagesContexts(false)
+    , mBinderContextCheckFunc(NULL)
+    , mBinderContextUserData(NULL)
+    , mThreadPoolStarted(false)
+    , mThreadPoolSeq(1)
+{
+    if (mDriverFD >= 0) {
+        // XXX Ideally, there should be a specific define for whether we
+        // have mmap (or whether we could possibly have the kernel module
+        // availabla).
+#if !defined(HAVE_WIN32_IPC)
+        // mmap the binder, providing a chunk of virtual address space to receive transactions.
+        mVMStart = mmap(0, BINDER_VM_SIZE, PROT_READ, MAP_PRIVATE | MAP_NORESERVE, mDriverFD, 0);
+        if (mVMStart == MAP_FAILED) {
+            // *sigh*
+            LOGE("Using /dev/binder failed: unable to mmap transaction memory.\n");
+            close(mDriverFD);
+            mDriverFD = -1;
+        }
+#else
+        mDriverFD = -1;
+#endif
+    }
+
+    LOG_ALWAYS_FATAL_IF(mDriverFD < 0, "Binder driver could not be opened.  Terminating.");
+}
+static int open_driver()
+{
+    int fd = open("/dev/binder", O_RDWR);
+    if (fd >= 0) {
+        fcntl(fd, F_SETFD, FD_CLOEXEC);
+        int vers;
+        status_t result = ioctl(fd, BINDER_VERSION, &vers);
+        if (result == -1) {
+            LOGE("Binder ioctl to obtain version failed: %s", strerror(errno));
+            close(fd);
+            fd = -1;
+        }
+        if (result != 0 || vers != BINDER_CURRENT_PROTOCOL_VERSION) {
+            LOGE("Binder driver protocol does not match user space protocol!");
+            close(fd);
+            fd = -1;
+        }
+        size_t maxThreads = 15;
+        result = ioctl(fd, BINDER_SET_MAX_THREADS, &maxThreads);
+        if (result == -1) {
+            LOGE("Binder ioctl to set max threads failed: %s", strerror(errno));
+        }
+    } else {
+        LOGW("Opening '/dev/binder' failed: %s\n", strerror(errno));
+    }
+    return fd;
+}
+                        </code></pre>
+                        ---
+                        ProcessState的构造函数，完成了：
+
+                        * 打开/dev/binder设备
+                        * 对打开的fd调用mmap，通知底层分配内存
+
+                        <b>注意：ProcessSate针对每个进程只有一个实例， 
+                            所以一个进程只会打开一次设备</b>
+                        ---
+                        接下来我们调用了
+                        <pre><code data-trim>
+    TProcessService::instantiate();
+    void TProcessService::instantiate()
+    {
+        defaultServiceManager()->addService(String16("tprocess"), new TProcessService());
+    }
+                        </code></pre>
+                        ---
+                        defaultServiceManager()
+                        <pre><code data-trim>
+sp < IServiceManager > defaultServiceManager()
+{
+    if (gDefaultServiceManager != NULL) return gDefaultServiceManager;
+    {
+        AutoMutex _l(gDefaultServiceManagerLock);
+        if (gDefaultServiceManager == NULL) {
+            gDefaultServiceManager = interface_cast < IServiceManager > (
+                ProcessState::self()->getContextObject(NULL));
+        }
+    }
+    return gDefaultServiceManager;
+}
+                        </code></pre>
+                        * 接下来考虑getContextObject()
+                        ---
+                        <pre><code data-trim>
+                        getContextObject()
+sp< IBinder > ProcessState::getContextObject(const sp< IBinder > & caller)
+{
+    return getStrongProxyForHandle(0);
+}
+sp < IBinder > ProcessState::getStrongProxyForHandle(int32_t handle)
+{
+    sp < IBinder > result;
+
+    AutoMutex _l(mLock);
+
+    handle_entry* e = lookupHandleLocked(handle);
+
+    if (e != NULL) {
+        // We need to create a new BpBinder if there isn't currently one, OR we
+        // are unable to acquire a weak reference on this current one.  See comment
+        // in getWeakProxyForHandle() for more info about this.
+        IBinder* b = e->binder;
+        if (b == NULL || !e->refs->attemptIncWeak(this)) {
+            b = new BpBinder(handle); 
+            e->binder = b;
+            if (b) e->refs = b->getWeakRefs();
+            result = b;
+        } else {
+            // This little bit of nastyness is to allow us to add a primary
+            // reference to the remote proxy when this team doesn't have one
+            // but another team is sending the handle to us.
+            result.force_set(b);
+            e->refs->decWeak(this);
+        }
+    }
+
+    return result;
+}
+                        </code></pre>
+                        ---
+                        ### BpBinder vs BBinder
+                        <img src="image/class_view_new.png" width="60%" height="60%">
+
+                        * BpBinder : binder proxy,代表server端在client端存在，提供与server的通信同能
+                        * BBinder : 用来实现server端的通信
+                        ---
+                        所以之前的代码
+                        <pre><code data-trim>
+            gDefaultServiceManager = interface_cast < IServiceManager >(
+                ProcessState::self()->getContextObject(NULL));
+                        </code></pre>
+                        相当于
+                        <pre><code data-trim>
+            gDefaultServiceManager = interface_cast < IServiceManager >(
+                        new BpBinder(0));
+                        </code></pre>
+                        ---
+                        ### interface_cast
+                        <pre><code data-trim>
+template < typename INTERFACE >
+inline sp < INTERFACE > interface_cast(const sp < IBinder > & obj)
+{
+    return INTERFACE::asInterface(obj);
+}
+                        </code></pre>
+                        ---
+                        ### 两个巨重要的宏
+                        <pre><code data-trim>
+#define DECLARE_META_INTERFACE(INTERFACE)
+    static const android::String16 descriptor;
+    static android::sp < I##INTERFACE > asInterface(
+            const android::sp < android::IBinder > & obj);
+    virtual const android::String16& getInterfaceDescriptor() const;
+    I##INTERFACE();
+    virtual ~I##INTERFACE();
+
+
+#define IMPLEMENT_META_INTERFACE(INTERFACE, NAME)
+    const android::String16 I##INTERFACE::descriptor(NAME);
+    const android::String16&
+            I##INTERFACE::getInterfaceDescriptor() const {
+        return I##INTERFACE::descriptor;
+    }
+    android::sp < I##INTERFACE > I##INTERFACE::asInterface(
+            const android::sp < android::IBinder > & obj)
+    {
+        android::sp < I##INTERFACE > intr;
+        if (obj != NULL) {
+            intr = static_cast < I##INTERFACE* >(
+                obj->queryLocalInterface(
+                        I##INTERFACE::descriptor).get());
+            if (intr == NULL) {
+                intr = new Bp##INTERFACE(obj);
+            }
+        }
+        return intr;
+    }
+    I##INTERFACE::I##INTERFACE() { }
+    I##INTERFACE::~I##INTERFACE() { }
+                        </code></pre>
+                        ---
+                        理理思绪
+
+                        * 所谓的ContextObject就是ServiceManager的一个引用
+                        * ITProcess,IServiceManager是业务逻辑接口
+                        * BpServiceManager负责实现ServiceManager客户端的业务逻辑通信
+                        * BnTProcess实现TProcessService的服务端的业务逻辑通信
+                        * TProcessService实现真正的业务逻辑功能实现
+                        ---
+                        接下来我们继续看看interface_cast里的new BpServiceManager
+                        <pre><code data-trim>
+    BpServiceManager(const sp < IBinder >& impl)
+        : BpInterface < IServiceManager >(impl)
+    {
+    }
+
+    virtual sp < IBinder > getService(const String16& name) const
+    {
+    }
+
+    virtual sp < IBinder > checkService( const String16& name) const
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
+        data.writeString16(name);
+        remote()->transact(CHECK_SERVICE_TRANSACTION, data, &reply);
+        return reply.readStrongBinder();
+    }
+
+    virtual status_t addService(const String16& name, const sp < IBinder > & service)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
+        data.writeString16(name);
+        data.writeStrongBinder(service);
+        status_t err = remote()->transact(ADD_SERVICE_TRANSACTION, data, &reply);
+        return err == NO_ERROR ? reply.readExceptionCode() : err;
+    }
+
+    virtual Vector < String16 > listServices()
+    {
+        Vector < String16 > res;
+        int n = 0;
+
+        for (;;) {
+            Parcel data, reply;
+            data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
+            data.writeInt32(n++);
+            status_t err = remote()->transact(LIST_SERVICES_TRANSACTION, data, &reply);
+            if (err != NO_ERROR)
+                break;
+            res.add(reply.readString16());
+        }
+        return res;
+    }
+                        </code></pre>
+                        ---
+                        BpInterface < IServiceManager >
+                        <pre><code data-trim>
+template < typename INTERFACE >
+inline BpInterface < INTERFACE >::BpInterface(const sp < IBinder > & remote)
+    : BpRefBase(remote)
+{
+}
+BpRefBase::BpRefBase(const sp < IBinder > & o)
+    : mRemote(o.get()), mRefs(NULL), mState(0)
+{
+    extendObjectLifetime(OBJECT_LIFETIME_WEAK);
+
+    if (mRemote) {
+        mRemote->incStrong(this);           // Removed on first IncStrong().
+        mRefs = mRemote->createWeak(this);  // Held for our entire lifetime.
+    }
+}
+                        </code></pre>
+                        ---
+                        再次理理思绪
+
+                        * 至此，我们知道了BpServiceManager里有一个mRemote变量实际上指向了一个BpBinder
+                        * 这个BpBinder里面保存了一个mHandle
+                        ---
+                        继续回到开始时的代码
+                        <pre><code data-trim>
+    void TProcessService::instantiate()
+    {
+        defaultServiceManager()->addService(String16("tprocess"), new TProcessService());
+    }
+                        </code></pre>
+
+                        * 接下来该走addService()，分析真正的IPC函数了
+                        ---
+                        ### addService
+                        <pre><code data-trim>
+    virtual status_t addService(const String16& name, const sp < IBinder > & service)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IServiceManager::getInterfaceDescriptor());
+        data.writeString16(name);
+        data.writeStrongBinder(service);
+        status_t err = remote()->transact(ADD_SERVICE_TRANSACTION, data, &reply);
+        return err == NO_ERROR ? reply.readExceptionCode() : err;
+    }
+                        </code></pre>
+                        ---
+                        ### addService Cont.
+
+                        Parcel
+
+                        <img src="image/parcel.png" width="80%" height="80%">
+                        ---
+                        BpBinder::transact()
+                        <pre><code data-trim>
+status_t BpBinder::transact(
+    uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
+{
+    // Once a binder has died, it will never come back to life.
+    if (mAlive) {
+        status_t status = IPCThreadState::self()->transact(
+            mHandle, code, data, reply, flags);
+        if (status == DEAD_OBJECT) mAlive = 0;
+        return status;
+    }
+
+    return DEAD_OBJECT;
+}
+                        </code></pre>
+                        ---
+                        ### addService Cont.
+                        status_t IPCThreadState::transact()
+                        <pre><code data-trim>
+status_t IPCThreadState::transact(int32_t handle,
+                                  uint32_t code, const Parcel& data,
+                                  Parcel* reply, uint32_t flags)
+{
+    status_t err = data.errorCheck();
+    ...
+    err = writeTransactionData(BC_TRANSACTION, flags, handle, code, data, NULL);
+    ...
+    if ((flags & TF_ONE_WAY) == 0) {
+        if (reply) {
+            err = waitForResponse(reply);
+        } else {
+            Parcel fakeReply;
+            err = waitForResponse(&fakeReply);
+        }
+    } else {
+        err = waitForResponse(NULL, NULL);
+    }
+    return err;
+}
+                        </code></pre>
+
+                        * 大概知道干什么的就好，细节稍后和驱动一起讲
+                        ---
+                        addService结束后，TProcessService开始进入主循环
+                        <pre><code data-trim>
+    ProcessState::self()->startThreadPool();
+    IPCThreadState::self()->joinThreadPool();
+                        </code></pre>
+
+                        最终都会走向
+                        <pre><code data-trim>
+        IPCThreadState::self()->joinThreadPool(mIsMain);
+                        </code></pre>
+                        ---
+void IPCThreadState::joinThreadPool(bool isMain)
+                        <pre><code data-trim>
+void IPCThreadState::joinThreadPool(bool isMain)
+{
+
+    mOut.writeInt32(isMain ? BC_ENTER_LOOPER : BC_REGISTER_LOOPER);
+    status_t result;
+    do {
+        int32_t cmd;
+        ...
+        // now get the next command to be processed, waiting if necessary
+        result = talkWithDriver();
+        if (result >= NO_ERROR) {
+            size_t IN = mIn.dataAvail();
+            if (IN < sizeof(int32_t)) continue;
+            cmd = mIn.readInt32();
+            ...
+            result = executeCommand(cmd);
+        }
+        ...
+    } while (result != -ECONNREFUSED && result != -EBADF);
+
+    LOG_THREADPOOL("**** THREAD %p (PID %d) IS LEAVING THE THREAD POOL err=%p\n",
+        (void*)pthread_self(), getpid(), (void*)result);
+    mOut.writeInt32(BC_EXIT_LOOPER);
+    talkWithDriver(false);
+}
+                        </code></pre>
+                        ---
+                        结束
+                        * 有两个线程在等待响应来自客户端的消息，不够的话驱动还会指示新建
+                        * 发送数据终究会走向IPCThreadState::transact()
+                        * 接收数据终究会走向IPCThreadState::joinThreadPool()里的循环
+                        ---
+                        接下来就该分析binder协议以及驱动实现了
                     </script>
                 </section>
-                <section>
-                    <pre><code class="c" data-trim contenteditable> int main()
-                    {
-                        printf();
-                    }
-                    </code></pre>
-                </section>
+                <!--<section data-markdown data-separator="===" data-vertical='---'>-->
+                <!--<script type="text/template">-->
+                    <!--<pre><code data-trim>-->
+                    <!--</code></pre>-->
+                <!--</script>-->
+            <!--</section>-->
             </div>
         </div>
         <script src="reveal/lib/js/head.min.js"></script>
