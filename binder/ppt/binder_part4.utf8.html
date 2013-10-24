@@ -383,7 +383,7 @@ sp<IBinder> ibinderForJavaObject(JNIEnv* env, jobject obj)
         // so we'll just call it directly.
         boolean res;
         try {
-            //这里又会直接调用onTransact方法，由于生成的ILedService.Stub重载了该函数，所以会直接调用ILedService.Stub.onTransact()
+            //这里又会直接调用onTransact方法，由于生成的ILedManager.Stub重载了该函数，所以会直接调用ILedManager.Stub.onTransact()
             //至此，业务逻辑打通
             res = onTransact(code, data, reply, flags);
         } catch (RemoteException e) {
