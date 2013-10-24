@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <!--<meta charset="gb2312">-->
 
-		<title>Binder in Details I</title>
+		<title>Binder Analysis I</title>
 
 		<meta name="description" content="A framework for easily creating beautiful presentations using HTML">
 		<meta name="author" content="Hakim El Hattab">
@@ -35,7 +35,7 @@
             <div class="slides">
                 <section data-markdown data-separator="===" data-vertical='---'>
                     <script type="text/template">
-                       ## Binder in Details part 1
+                       ## Binder Analysis part 1
 
                        lijin@routon
                        ===
@@ -679,7 +679,7 @@ public class LedService extends ILedManager.Stub {
                                 virtual TResult exec(String16 cmd, int redirectStderrToStdout) = 0;
                         };
 
-                        <!--class BnTProcess : public BnInterface<ITProcess>-->
+                        class BnTProcess : public BnInterface < ITProcess >
                         {
                             public:
                                 virtual status_t onTransact( uint32_t code,
@@ -815,7 +815,7 @@ namespace android
                     <pre><code data-trim >
 int main(int argc, char** argv)
 {
-    <!--sp<ProcessState> proc(ProcessState::self());-->
+    sp < ProcessState > proc(ProcessState::self());
 
     //signal_init();
 
@@ -827,7 +827,7 @@ int main(int argc, char** argv)
      * We start another one thread, so that we have 3 threads can
      * serve the request from clients now.
      */
-    <!--sp<Thread> t = new PoolThread(false);-->
+    sp < Thread > t = new PoolThread(false);
     t->run("TProcess #3");
 
     IPCThreadState::self()->joinThreadPool();

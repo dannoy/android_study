@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <!--<meta charset="gb2312">-->
 
-		<title>Binder in Details I</title>
+		<title>Binder Analysis II</title>
 
 		<meta name="description" content="A framework for easily creating beautiful presentations using HTML">
 		<meta name="author" content="Hakim El Hattab">
@@ -34,7 +34,7 @@
             <div class="slides">
                 <section data-markdown data-separator="===" data-vertical='---'>
                     <script type="text/template">
-                       ## Binder in Details part 2
+                       ## Binder Analysis part 2
                        ### Implements in CPP
 
                        lijin@routon
@@ -54,10 +54,38 @@
                     Android为了方便内存的管理，定义了一套指针的管理方式，简化内存的管理，包括：
 
                     * RefBase
-                    * sp<T>:Strong Pointer
-                    * wp<T>:Weak Pointer
+                    * sp < T > : Strong Pointer
+                    * wp < T > : Weak Pointer
                     ---
-                    ### Strong Pointer
+                    RefBase：所有希望使用智能管理的类的基类
+                    <pre><code data-trim >
+                    class A:public RefBase{
+                    };
+                    int main()
+                    {
+                        A *pA = new A;
+                        {
+                            sp < A > spA(pa);
+                            wp < A > wpA(spa);
+                        }
+                    }
+                    </code></pre>
+                    ---
+                    弱指针不能直接使用，必须要promote为强指针后才能使用
+                    <pre><code data-trim>
+                    int main()
+                    {
+                        A *pA = new A;
+                        wp < A > wpA(pA);
+                        sp < A > spA = wpA.promote();
+                    }
+
+                    </code></pre>
+
+                    ---
+                    ### Notice
+                    * 除非显式调用extendObjectLifeTime()，否则当强引用引用结束后，原指针被释放
+                    * 缓存的指针为弱类型时，在使用前必须要promote为强指针后才能安全解引用原指针
                     </script>
                 </section>
                 <section data-markdown data-separator="===" data-vertical='---'>
@@ -267,9 +295,9 @@ sp < IBinder > ProcessState::getStrongProxyForHandle(int32_t handle)
                         </code></pre>
                         ---
                         ### BpBinder vs BBinder
-                        <img src="image/class_view_new.png" width="60%" height="60%">
+                        <img src="image/class_view_new.png" width="50%" height="50%">
 
-                        * BpBinder : binder proxy,代表server端在client端存在，提供与server的通信同能
+                        * BpBinder : binder proxy,代表server端在client端存在，提供与server的通信功能
                         * BBinder : 用来实现server端的通信
                         ---
                         所以之前的代码
@@ -520,7 +548,8 @@ void IPCThreadState::joinThreadPool(bool isMain)
 }
                         </code></pre>
                         ---
-                        结束
+                        ### 结束
+
                         * 有两个线程在等待响应来自客户端的消息，不够的话驱动还会指示新建
                         * 发送数据终究会走向IPCThreadState::transact()
                         * 接收数据终究会走向IPCThreadState::joinThreadPool()里的循环
